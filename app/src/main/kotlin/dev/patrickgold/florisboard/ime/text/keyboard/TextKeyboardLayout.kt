@@ -105,6 +105,7 @@ fun TextKeyboardLayout(
     modifier: Modifier = Modifier,
     evaluator: ComputingEvaluator,
     isPreview: Boolean = false,
+    keyboardSide: dev.patrickgold.florisboard.FlorisImeService.KeyboardSide = dev.patrickgold.florisboard.FlorisImeService.KeyboardSide.FULL,
 ): Unit = with(LocalDensity.current) {
     val prefs by FlorisPreferenceStore
     val context = LocalContext.current
@@ -239,6 +240,29 @@ fun TextKeyboardLayout(
             }
         }
 
+        // Create key filter based on keyboard side for split mode
+        val keyFilter: (TextKey) -> Boolean = remember(keyboardSide, keyboardWidth) {
+            when (keyboardSide) {
+                dev.patrickgold.florisboard.FlorisImeService.KeyboardSide.FULL -> {
+                    { _ -> true } // Show all keys
+                }
+                dev.patrickgold.florisboard.FlorisImeService.KeyboardSide.LEFT -> {
+                    { key ->
+                        // Show keys where center X is in left half
+                        val centerX = key.touchBounds.left + (key.touchBounds.width / 2)
+                        centerX < keyboardWidth * 0.5f
+                    }
+                }
+                dev.patrickgold.florisboard.FlorisImeService.KeyboardSide.RIGHT -> {
+                    { key ->
+                        // Show keys where center X is in right half
+                        val centerX = key.touchBounds.left + (key.touchBounds.width / 2)
+                        centerX >= keyboardWidth * 0.5f
+                    }
+                }
+            }
+        }
+
         val popupUiController = rememberPopupUiController(
             key1 = keyboard,
             key2 = desiredKey,
@@ -289,10 +313,13 @@ fun TextKeyboardLayout(
         controller.popupUiController = popupUiController
         val debugShowTouchBoundaries by prefs.devtools.showKeyTouchBoundaries.observeAsState()
         for (textKey in keyboard.keys()) {
-            TextKeyButton(
-                textKey, evaluator, desiredKey,
-                debugShowTouchBoundaries,
-            )
+            // Apply key filter for split mode
+            if (keyFilter(textKey)) {
+                TextKeyButton(
+                    textKey, evaluator, desiredKey,
+                    debugShowTouchBoundaries,
+                )
+            }
         }
 
         popupUiController.RenderPopups()

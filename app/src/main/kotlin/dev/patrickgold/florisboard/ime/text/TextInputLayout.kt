@@ -45,6 +45,7 @@ import org.florisboard.lib.snygg.ui.SnyggIcon
 @Composable
 fun TextInputLayout(
     modifier: Modifier = Modifier,
+    keyboardSide: dev.patrickgold.florisboard.FlorisImeService.KeyboardSide = dev.patrickgold.florisboard.FlorisImeService.KeyboardSide.FULL,
 ) {
     val context = LocalContext.current
     val keyboardManager by context.keyboardManager()
@@ -62,7 +63,10 @@ fun TextInputLayout(
                 .fillMaxWidth()
                 .wrapContentHeight(),
         ) {
-            Smartbar()
+            // Only show Smartbar in FULL mode (not in split mode)
+            if (keyboardSide == dev.patrickgold.florisboard.FlorisImeService.KeyboardSide.FULL) {
+                Smartbar()
+            }
             if (state.isActionsOverflowVisible) {
                 QuickActionsOverflowPanel()
             } else {
@@ -79,7 +83,10 @@ fun TextInputLayout(
                             painter = painterResource(R.drawable.ic_incognito),
                         )
                     }
-                    TextKeyboardLayout(evaluator = evaluator)
+                    TextKeyboardLayout(
+                        evaluator = evaluator,
+                        keyboardSide = keyboardSide,
+                    )
                 }
             }
         }

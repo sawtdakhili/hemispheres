@@ -296,6 +296,10 @@ class FlorisImeService : LifecycleInputMethodService() {
         prefs.physicalKeyboard.showOnScreenKeyboard.asFlow().collectIn(lifecycleScope) {
             updateInputViewShown()
         }
+        // Listen for split corner mode changes and update layout parameters
+        prefs.keyboard.splitCornerModeEnabled.asFlow().collectIn(lifecycleScope) {
+            updateSoftInputWindowLayoutParameters()
+        }
         @Suppress("DEPRECATION") // We do not retrieve the wallpaper but only listen to changes
         registerReceiver(wallpaperChangeReceiver, IntentFilter(Intent.ACTION_WALLPAPER_CHANGED))
     }
@@ -520,26 +524,56 @@ class FlorisImeService : LifecycleInputMethodService() {
             return
         }
 
-        val visibleTopY = inputWindowView.height - inputViewSize.height
-        val needAdditionalOverlay =
-            prefs.smartbar.enabled.get() &&
-                prefs.smartbar.layout.get() == SmartbarLayout.SUGGESTIONS_ACTIONS_EXTENDED &&
-                prefs.smartbar.extendedActionsExpanded.get() &&
-                prefs.smartbar.extendedActionsPlacement.get() == ExtendedActionsPlacement.OVERLAY_APP_UI &&
-                keyboardManager.activeState.imeUiMode == ImeUiMode.TEXT
+        // Check if split corner mode is active
+        val configuration = resources.configuration
+        val isSplitCornerActive = prefs.keyboard.splitCornerModeEnabled.get() &&
+                                  configuration.isOrientationLandscape()
 
-        outInsets.contentTopInsets = visibleTopY
-        outInsets.visibleTopInsets = visibleTopY
-        outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
-        val left = 0
-        val top = if (keyboardManager.activeState.isBottomSheetShowing() || keyboardManager.activeState.isSubtypeSelectionShowing()) {
-            0
+        if (isSplitCornerActive) {
+            // Split corner mode: keyboard at top with two touchable regions
+            outInsets.contentTopInsets = 0  // Content starts at top (keyboard doesn't push it down)
+            outInsets.visibleTopInsets = inputViewSize.height  // Keyboard visible area at top
+            outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
+
+            // Get split weights to calculate touch regions
+            val leftWeight = prefs.keyboard.splitCornerKeyboardLeftWeight.get()
+            val rightWeight = prefs.keyboard.splitCornerKeyboardRightWeight.get()
+
+            val screenWidth = inputViewSize.width
+            val leftWidth = (screenWidth * leftWeight).toInt()
+            val rightStart = (screenWidth * (1f - rightWeight)).toInt()
+
+            // Create two touchable rectangles: left corner and right corner
+            outInsets.touchableRegion.setEmpty()
+            outInsets.touchableRegion.union(
+                android.graphics.Rect(0, 0, leftWidth, inputViewSize.height)  // Left corner
+            )
+            outInsets.touchableRegion.union(
+                android.graphics.Rect(rightStart, 0, screenWidth, inputViewSize.height)  // Right corner
+            )
         } else {
-            visibleTopY - if (needAdditionalOverlay) FlorisImeSizing.Static.smartbarHeightPx else 0
+            // Original bottom keyboard logic
+            val visibleTopY = inputWindowView.height - inputViewSize.height
+            val needAdditionalOverlay =
+                prefs.smartbar.enabled.get() &&
+                    prefs.smartbar.layout.get() == SmartbarLayout.SUGGESTIONS_ACTIONS_EXTENDED &&
+                    prefs.smartbar.extendedActionsExpanded.get() &&
+                    prefs.smartbar.extendedActionsPlacement.get() == ExtendedActionsPlacement.OVERLAY_APP_UI &&
+                    keyboardManager.activeState.imeUiMode == ImeUiMode.TEXT
+
+            outInsets.contentTopInsets = visibleTopY
+            outInsets.visibleTopInsets = visibleTopY
+            outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
+            val left = 0
+            val top = if (keyboardManager.activeState.isBottomSheetShowing() || keyboardManager.activeState.isSubtypeSelectionShowing()) {
+                0
+            } else {
+                visibleTopY - if (needAdditionalOverlay) FlorisImeSizing.Static.smartbarHeightPx else 0
+            }
+            val right = inputViewSize.width
+            val bottom = inputWindowView.height
+            outInsets.touchableRegion.set(left, top, right, bottom)
         }
-        val right = inputViewSize.width
-        val bottom = inputWindowView.height
-        outInsets.touchableRegion.set(left, top, right, bottom)
     }
 
     /**
@@ -557,7 +591,14 @@ class FlorisImeService : LifecycleInputMethodService() {
         }
         val inputArea = w.findViewById<View>(android.R.id.inputArea) ?: return
         ViewUtils.updateLayoutHeightOf(inputArea, layoutHeight)
-        ViewUtils.updateLayoutGravityOf(inputArea, Gravity.BOTTOM)
+
+        // Determine keyboard gravity based on split corner mode
+        val configuration = resources.configuration
+        val isSplitCornerActive = prefs.keyboard.splitCornerModeEnabled.get() &&
+                                  configuration.isOrientationLandscape()
+        val layoutGravity = if (isSplitCornerActive) Gravity.TOP else Gravity.BOTTOM
+        ViewUtils.updateLayoutGravityOf(inputArea, layoutGravity)
+
         val inputWindowView = inputWindowView ?: return
         ViewUtils.updateLayoutHeightOf(inputWindowView, layoutHeight)
     }
@@ -577,6 +618,18 @@ class FlorisImeService : LifecycleInputMethodService() {
         } catch (_: Throwable) {
             super.getTextForImeAction(imeOptions)?.toString()
         }
+    }
+
+    /**
+     * Enum representing which side of the keyboard to render in split corner mode.
+     */
+    enum class KeyboardSide {
+        /** Normal full keyboard */
+        FULL,
+        /** Left half for split mode */
+        LEFT,
+        /** Right half for split mode */
+        RIGHT;
     }
 
     @Composable
@@ -659,34 +712,84 @@ class FlorisImeService : LifecycleInputMethodService() {
                     val oneHandedMode by prefs.keyboard.oneHandedMode.observeAsState()
                     val oneHandedModeEnabled by prefs.keyboard.oneHandedModeEnabled.observeAsState()
                     val oneHandedModeScaleFactor by prefs.keyboard.oneHandedModeScaleFactor.observeAsState()
-                    val keyboardWeight = when {
-                        !oneHandedModeEnabled || configuration.isOrientationLandscape() -> 1f
-                        else -> oneHandedModeScaleFactor / 100f
-                    }
-                    if (oneHandedModeEnabled && oneHandedMode == OneHandedMode.END && configuration.isOrientationPortrait()) {
-                        OneHandedPanel(
-                            panelSide = OneHandedMode.START,
-                            weight = 1f - keyboardWeight,
-                        )
-                    }
-                    CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
-                        Box(
-                            modifier = Modifier
-                                .weight(keyboardWeight)
-                                .wrapContentHeight(),
-                        ) {
-                            when (state.imeUiMode) {
-                                ImeUiMode.TEXT -> TextInputLayout()
-                                ImeUiMode.MEDIA -> MediaInputLayout()
-                                ImeUiMode.CLIPBOARD -> ClipboardInputLayout()
+
+                    // Split corner mode preferences
+                    val splitCornerModeEnabled by prefs.keyboard.splitCornerModeEnabled.observeAsState()
+                    val splitCornerLeftWeight by prefs.keyboard.splitCornerKeyboardLeftWeight.observeAsState()
+                    val splitCornerRightWeight by prefs.keyboard.splitCornerKeyboardRightWeight.observeAsState()
+
+                    // Determine if split corner mode should be active
+                    val isSplitCornerActive = splitCornerModeEnabled && configuration.isOrientationLandscape()
+
+                    if (isSplitCornerActive) {
+                        // Split corner mode: left keyboard, center gap, right keyboard
+                        CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(splitCornerLeftWeight)
+                                    .wrapContentHeight(),
+                            ) {
+                                when (state.imeUiMode) {
+                                    ImeUiMode.TEXT -> TextInputLayout(keyboardSide = KeyboardSide.LEFT)
+                                    ImeUiMode.MEDIA -> MediaInputLayout()
+                                    ImeUiMode.CLIPBOARD -> ClipboardInputLayout()
+                                }
                             }
                         }
-                    }
-                    if (oneHandedModeEnabled && oneHandedMode == OneHandedMode.START && configuration.isOrientationPortrait()) {
-                        OneHandedPanel(
-                            panelSide = OneHandedMode.END,
-                            weight = 1f - keyboardWeight,
-                        )
+
+                        // Center transparent spacer
+                        Box(
+                            modifier = Modifier
+                                .weight(1f - splitCornerLeftWeight - splitCornerRightWeight)
+                                .wrapContentHeight(),
+                        ) {
+                            // Transparent - no background drawn, allows app content to show through
+                        }
+
+                        CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(splitCornerRightWeight)
+                                    .wrapContentHeight(),
+                            ) {
+                                when (state.imeUiMode) {
+                                    ImeUiMode.TEXT -> TextInputLayout(keyboardSide = KeyboardSide.RIGHT)
+                                    ImeUiMode.MEDIA -> MediaInputLayout()
+                                    ImeUiMode.CLIPBOARD -> ClipboardInputLayout()
+                                }
+                            }
+                        }
+                    } else {
+                        // Original one-handed mode logic
+                        val keyboardWeight = when {
+                            !oneHandedModeEnabled || configuration.isOrientationLandscape() -> 1f
+                            else -> oneHandedModeScaleFactor / 100f
+                        }
+                        if (oneHandedModeEnabled && oneHandedMode == OneHandedMode.END && configuration.isOrientationPortrait()) {
+                            OneHandedPanel(
+                                panelSide = OneHandedMode.START,
+                                weight = 1f - keyboardWeight,
+                            )
+                        }
+                        CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(keyboardWeight)
+                                    .wrapContentHeight(),
+                            ) {
+                                when (state.imeUiMode) {
+                                    ImeUiMode.TEXT -> TextInputLayout()
+                                    ImeUiMode.MEDIA -> MediaInputLayout()
+                                    ImeUiMode.CLIPBOARD -> ClipboardInputLayout()
+                                }
+                            }
+                        }
+                        if (oneHandedModeEnabled && oneHandedMode == OneHandedMode.START && configuration.isOrientationPortrait()) {
+                            OneHandedPanel(
+                                panelSide = OneHandedMode.END,
+                                weight = 1f - keyboardWeight,
+                            )
+                        }
                     }
                 }
             }

@@ -529,6 +529,18 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
             key = "keyboard__one_handed_mode_scale_factor",
             default = 87,
         )
+        val splitCornerModeEnabled = boolean(
+            key = "keyboard__split_corner_mode_enabled",
+            default = false,
+        )
+        val splitCornerKeyboardLeftWeight = float(
+            key = "keyboard__split_corner_left_weight",
+            default = 0.4f,
+        )
+        val splitCornerKeyboardRightWeight = float(
+            key = "keyboard__split_corner_right_weight",
+            default = 0.4f,
+        )
         val landscapeInputUiMode = enum(
             key = "keyboard__landscape_input_ui_mode",
             default = LandscapeInputUiMode.DYNAMICALLY_SHOW,
