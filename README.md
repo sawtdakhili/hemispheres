@@ -1,3 +1,6 @@
+<img align="left" width="80" height="80"
+src=".github/repo_icon.png" alt="Hemispheres app icon">
+
 # Hemispheres
 
 **Hemispheres** is a split landscape keyboard for Android, forked from [FlorisBoard](https://github.com/florisboard/florisboard). It features a unique ergonomic design optimized for thumb typing in landscape mode.
