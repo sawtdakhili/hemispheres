@@ -59,6 +59,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -268,6 +269,10 @@ class FlorisImeService : LifecycleInputMethodService() {
     private var isFullscreenUiMode by mutableStateOf(false)
     private var isExtractUiShown by mutableStateOf(false)
     private var resourcesContext by mutableStateOf(this as Context)
+
+    // Split corner mode opacity state
+    private var keyboardOpacity by mutableStateOf(1.0f)
+    private var isTouchHoldActive by mutableStateOf(false)
 
     private val wallpaperChangeReceiver = WallpaperChangeReceiver()
 
@@ -717,9 +722,18 @@ class FlorisImeService : LifecycleInputMethodService() {
                     val splitCornerModeEnabled by prefs.keyboard.splitCornerModeEnabled.observeAsState()
                     val splitCornerLeftWeight by prefs.keyboard.splitCornerKeyboardLeftWeight.observeAsState()
                     val splitCornerRightWeight by prefs.keyboard.splitCornerKeyboardRightWeight.observeAsState()
+                    val splitCornerOpacity by prefs.keyboard.splitCornerKeyboardOpacity.observeAsState()
+                    val splitCornerFadeOpacity by prefs.keyboard.splitCornerFadeOnTouchOpacity.observeAsState()
 
                     // Determine if split corner mode should be active
                     val isSplitCornerActive = splitCornerModeEnabled && configuration.isOrientationLandscape()
+
+                    // Calculate current keyboard opacity
+                    val currentOpacity = if (isSplitCornerActive) {
+                        if (isTouchHoldActive) splitCornerFadeOpacity / 100f else splitCornerOpacity / 100f
+                    } else {
+                        1.0f
+                    }
 
                     if (isSplitCornerActive) {
                         // Split corner mode: left keyboard, center gap, right keyboard
@@ -727,7 +741,8 @@ class FlorisImeService : LifecycleInputMethodService() {
                             Box(
                                 modifier = Modifier
                                     .weight(splitCornerLeftWeight)
-                                    .wrapContentHeight(),
+                                    .wrapContentHeight()
+                                    .alpha(currentOpacity),
                             ) {
                                 when (state.imeUiMode) {
                                     ImeUiMode.TEXT -> TextInputLayout(keyboardSide = KeyboardSide.LEFT)
@@ -737,11 +752,25 @@ class FlorisImeService : LifecycleInputMethodService() {
                             }
                         }
 
-                        // Center transparent spacer
+                        // Center transparent spacer with touch detector
                         Box(
                             modifier = Modifier
                                 .weight(1f - splitCornerLeftWeight - splitCornerRightWeight)
-                                .wrapContentHeight(),
+                                .wrapContentHeight()
+                                .pointerInteropFilter { event ->
+                                    when (event.action) {
+                                        android.view.MotionEvent.ACTION_DOWN -> {
+                                            isTouchHoldActive = true
+                                            true
+                                        }
+                                        android.view.MotionEvent.ACTION_UP,
+                                        android.view.MotionEvent.ACTION_CANCEL -> {
+                                            isTouchHoldActive = false
+                                            true
+                                        }
+                                        else -> false
+                                    }
+                                },
                         ) {
                             // Transparent - no background drawn, allows app content to show through
                         }
@@ -750,7 +779,8 @@ class FlorisImeService : LifecycleInputMethodService() {
                             Box(
                                 modifier = Modifier
                                     .weight(splitCornerRightWeight)
-                                    .wrapContentHeight(),
+                                    .wrapContentHeight()
+                                    .alpha(currentOpacity),
                             ) {
                                 when (state.imeUiMode) {
                                     ImeUiMode.TEXT -> TextInputLayout(keyboardSide = KeyboardSide.RIGHT)

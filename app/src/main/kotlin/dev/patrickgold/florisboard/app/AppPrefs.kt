@@ -541,6 +541,14 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
             key = "keyboard__split_corner_right_weight",
             default = 0.4f,
         )
+        val splitCornerKeyboardOpacity = int(
+            key = "keyboard__split_corner_opacity",
+            default = 80,
+        )
+        val splitCornerFadeOnTouchOpacity = int(
+            key = "keyboard__split_corner_fade_opacity",
+            default = 20,
+        )
         val landscapeInputUiMode = enum(
             key = "keyboard__landscape_input_ui_mode",
             default = LandscapeInputUiMode.DYNAMICALLY_SHOW,

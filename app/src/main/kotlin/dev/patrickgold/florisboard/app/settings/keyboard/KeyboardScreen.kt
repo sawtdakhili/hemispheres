@@ -121,6 +121,49 @@ fun KeyboardScreen() = FlorisScreen {
                 stepIncrement = 1,
                 enabledIf = { prefs.keyboard.oneHandedModeEnabled.isTrue() },
             )
+            SwitchPreference(
+                prefs.keyboard.splitCornerModeEnabled,
+                title = "Split Corner Mode (Hemispheres)",
+                summary = "Position keyboard in top corners in landscape. Best for thumb typing with hands at phone sides.",
+            )
+            DialogSliderPreference(
+                prefs.keyboard.splitCornerKeyboardLeftWeight,
+                title = "Left Keyboard Width",
+                valueLabel = { stringRes(R.string.unit__percent__symbol, "v" to (it * 100).toInt()) },
+                min = 0.3f,
+                max = 0.5f,
+                stepIncrement = 0.05f,
+                enabledIf = { prefs.keyboard.splitCornerModeEnabled.isTrue() },
+            )
+            DialogSliderPreference(
+                prefs.keyboard.splitCornerKeyboardRightWeight,
+                title = "Right Keyboard Width",
+                valueLabel = { stringRes(R.string.unit__percent__symbol, "v" to (it * 100).toInt()) },
+                min = 0.3f,
+                max = 0.5f,
+                stepIncrement = 0.05f,
+                enabledIf = { prefs.keyboard.splitCornerModeEnabled.isTrue() },
+            )
+            DialogSliderPreference(
+                prefs.keyboard.splitCornerKeyboardOpacity,
+                title = "Keyboard Opacity",
+                summary = "Default transparency level. Lower = more transparent, lets you see content behind keyboard.",
+                valueLabel = { stringRes(R.string.unit__percent__symbol, "v" to it) },
+                min = 60,
+                max = 100,
+                stepIncrement = 5,
+                enabledIf = { prefs.keyboard.splitCornerModeEnabled.isTrue() },
+            )
+            DialogSliderPreference(
+                prefs.keyboard.splitCornerFadeOnTouchOpacity,
+                title = "Touch & Hold Fade Opacity",
+                summary = "Transparency level when touching & holding screen. Makes keyboard nearly invisible to see blocked content.",
+                valueLabel = { stringRes(R.string.unit__percent__symbol, "v" to it) },
+                min = 10,
+                max = 50,
+                stepIncrement = 5,
+                enabledIf = { prefs.keyboard.splitCornerModeEnabled.isTrue() },
+            )
             ListPreference(
                 prefs.keyboard.landscapeInputUiMode,
                 title = stringRes(R.string.pref__keyboard__landscape_input_ui_mode__label),
